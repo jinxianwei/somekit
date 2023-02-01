@@ -35,12 +35,62 @@ class Recorder:
         pass
 
 
+def visualize(args, model, recorder, result):
+    seg_visualizer = SegLocalVisualizer(
+        vis_backends=[dict(type='WandbVisBackend')],
+        save_dir='temp_dir',
+        alpha=0.5)
+    seg_visualizer.dataset_meta = dict(
+        classes=model.dataset_meta['classes'],
+        palette=model.dataset_meta['palette'])
+
+    original_img = mmcv.imread(args.img, channel_order='rgb')
+    # fuse the model output datasample result and original img
+    seg_visualizer.add_datasample(
+        name='gt_mask',
+        image=original_img,
+        data_sample=result,
+        draw_gt=False,
+        draw_pred=True,
+        wait_time=0,
+        out_file=None,
+        show=False)
+
+    # original test don't have mask, make a pseudo sample contain gt_mask
+    gt_sample = SegDataSample()
+    gt_mask = Image.open(args.gt_mask)
+    gt_mask = torch.from_numpy(np.array(gt_mask))
+    gt_sample.set_data({
+        'gt_sem_seg':
+        PixelData(**{'data': gt_mask})
+    })
+    seg_visualizer.add_datasample(
+        name='predict',
+        image=original_img,
+        data_sample=gt_sample,
+        draw_gt=True,
+        draw_pred=False,
+        wait_time=0,
+        out_file=None,
+        show=False)
+
+    seg_visualizer.add_image('original_img', original_img)
+
+    # add feature map to wandb visualizer
+    for i in range(len(recorder.data_buffer)):
+        feature = recorder.data_buffer[i][0]  # remove the batch
+        drawn_img = seg_visualizer.draw_featmap(
+            feature, original_img, channel_reduction='select_max')
+        seg_visualizer.add_image(f'feature_map{i}', drawn_img)
+
+
 def main():
     parser = ArgumentParser(
         description="To draw the feature_map durning inference")
     parser.add_argument('img', help='Image file')
     parser.add_argument('config', help='Config file')
     parser.add_argument('checkpoint', help='Checkpoint file')
+    parser.add_argument('--gt_mask', default=None, help='Path of gt mask file')
     parser.add_argument('--out-file', default=None, help='Path to output file')
     parser.add_argument(
         '--device', default='cuda:0', help='Device used for inference')
@@ -83,52 +133,7 @@ def main():
         # test a single image, and record feature map to data_buffer
         result = inference_model(model, args.img)
 
-    seg_visualizer = SegLocalVisualizer(
-        vis_backends=[dict(type='WandbVisBackend')],
-        save_dir='temp_dir',
-        alpha=0.5)
-    seg_visualizer.dataset_meta = dict(
-        classes=model.dataset_meta['classes'],
-        palette=model.dataset_meta['palette'])
-
-    original_img = mmcv.imread(args.img, channel_order='rgb')
-    # fuse the model output datasample result and original img
-    seg_visualizer.add_datasample(
-        name='gt_mask',
-        image=original_img,
-        data_sample=result,
-        draw_gt=False,
-        draw_pred=True,
-        wait_time=0,
-        out_file=None,
-        show=False)
-
-    # original test don't have mask, make a pseudo sample contain gt_mask
-    gt_sample = SegDataSample()
-    gt_mask = Image.open("/root/jxw/mmsegmentation/demo/IMG_01822-10.png")
-    gt_mask = torch.from_numpy(np.array(gt_mask))
-    gt_sample.set_data({
-        'gt_sem_seg':
-        PixelData(**{'data': gt_mask})
-    })
-    seg_visualizer.add_datasample(
-        name='predict',
-        image=original_img,
-        data_sample=gt_sample,
-        draw_gt=True,
-        draw_pred=False,
-        wait_time=0,
-        out_file=None,
-        show=False)
-
-    seg_visualizer.add_image('original_img', original_img)
-
-    # add feature map to wandb visualizer
-    for i in range(len(recorder.data_buffer)):
-        feature = recorder.data_buffer[i][0]  # remove the batch
-        drawn_img = seg_visualizer.draw_featmap(
-            feature, original_img, channel_reduction='select_max')
-        seg_visualizer.add_image(f'feature_map{i}', drawn_img)
+    visualize(args, model, recorder, result)
 
 
 if __name__ == '__main__':
