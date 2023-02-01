@@ -5,6 +5,7 @@ from typing import Type
 from PIL import Image
 import numpy as np
 import torch
+import torch.nn as nn
 from mmengine.model import revert_sync_batchnorm
 import mmcv
 
@@ -13,9 +14,6 @@ from mmseg.utils import register_all_modules
 from mmseg.visualization import SegLocalVisualizer
 from mmseg.structures import SegDataSample
 from mmengine.structures import PixelData
-
-
-import torch.nn as nn
 
 
 class Recorder:
